@@ -1,0 +1,11 @@
+venv*/
+*.txt
+*.csv
+*.pyc
+*.pyo
+__pycache__/
+test*.py
+
+# Whitelist
+!LICENSE.txt
+!README.md
