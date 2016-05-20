@@ -13,5 +13,8 @@ def exec_app(args):
 
     )
 
+    if not filename:
+        return
+
     main_cont = MainWindow(filename)
     return app.exec_()
