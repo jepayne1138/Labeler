@@ -10,6 +10,7 @@ venv*/
 *.xml
 __pycache__/
 test*.py
+labeled_files/
 
 # Whitelist
 !LICENSE.txt
