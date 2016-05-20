@@ -14,11 +14,10 @@ class QTableModel(QAbstractItemModel):
         self.values = {}
         self.maxRow = 2 ** 20
         self.maxColumn = 2 ** 14
-        self.headers = {Qt.Horizontal: [], Qt.Vertical: []}
+        self.headers = {Qt.Horizontal: {}, Qt.Vertical: {}}
 
-        # Every blank cell still needs an item, but we don't want to have to
-        # keep making new empty items, therefore we create a singular
-        # reference to an empty display item to be used for all empty cells
+        # We need a default empty item to compare with cleared cells to
+        # pack the underlying data structure
         self.item = item if item is not None else QBaseItem
         self.defaultEmpty = self.item()
 
@@ -41,11 +40,18 @@ class QTableModel(QAbstractItemModel):
                 index.column() in self.values[index.row()]):
             return self.values[index.row()][index.column()].data(role=role)
         else:
-            return self.defaultEmpty.data(role=role)
+            return None
+
+    def getItem(self, row, column):
+        try:
+            return self.values[row][column]
+        except KeyError:
+            return None
 
     # Editing functions
     def setData(self, index, value, role=Qt.DisplayRole):
-        self._setData(index, value, role)
+        if not self._setData(index, value, role):
+            return False
 
         # Pack the values dict
         self._packValues(index)
@@ -70,9 +76,10 @@ class QTableModel(QAbstractItemModel):
 
         # Create a new item if non exists at the given index
         if index.column() not in self.values[index.row()]:
-            self.values[index.row()][index.column()] = self.item(self)
+            self.values[index.row()][index.column()] = self.item()
 
         self.values[index.row()][index.column()].setData(value, role)
+        return True
 
     def _packValues(self, index):
         """Checks if the item is empty and packs the values dictionary
@@ -90,23 +97,28 @@ class QTableModel(QAbstractItemModel):
                 del self.values[index.row()]
 
     # Headers
-    def headerData(self, section, orientation, role=Qt.DisplayRole):
+    def headerData(self, section, orientation=Qt.Horizontal, role=Qt.DisplayRole):
         """Returns the header data if it exists else row and column indices"""
         try:
             return self.headers[orientation][section].data(role=role)
-        except IndexError:
+        except KeyError:
             if role == Qt.DisplayRole:
                 return section + 1
             return None
 
-    def setHeaderData(self, section, orientation, value, role=Qt.DisplayRole):
+    def setHeaderData(self, section, value, orientation=Qt.Horizontal, role=Qt.DisplayRole):
         if section < 0:
             return False
 
-        if self.headerData(section, orientation) is None:
-            self.headers[orientation][section] = QBaseItem
+        # if self.headerData(section, orientation) is None:
+        #     self.headers[orientation][section] = self.item
 
+        try:
+            self.headers[orientation][section].data(role=role)
+        except KeyError:
+            self.headers[orientation][section] = self.item()
         self.headers[orientation][section].setData(value, role)
+
         self.headerDataChanged.emit(orientation, section, section)
         return True
 
@@ -134,12 +146,3 @@ class QTableModel(QAbstractItemModel):
 
     def items(self):
         return self.values
-
-    # def pack(self):
-    #     """Removes any empty cells from the underlying data structure"""
-    #     for row_index, row_dict in self.values.items():
-    #         for key, value in row_dict.items():
-    #             if value == self.defaultEmpty:
-    #                 del self.values[row_index][key]
-    #         if row_dict == {}:
-    #             del self.values[row_index]

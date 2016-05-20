@@ -3,6 +3,11 @@ venv*/
 *.csv
 *.pyc
 *.pyo
+*.xlsx
+*.xls
+*.dbf
+*.json
+*.xml
 __pycache__/
 test*.py
 

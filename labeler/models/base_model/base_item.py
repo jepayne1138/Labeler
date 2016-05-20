@@ -36,6 +36,13 @@ class QBaseItem(QStandardItem):
         # Set any given Qt.ItemFlags
         self.setFlags(self.flags() | flags)  # flags defaults to 0
 
+    # def setData(self, value, role=Qt.UserRole + 1):
+    #     # We set the size hint for the Qt.DisplayRole
+    #     if role == Qt.DisplayRole:
+    #         fm = QFontMetrics(self.font())
+    #         self.setSizeHint(QSize(fm.width(str(value)), fm.height()))
+    #     super().setData(value, role)
+
     def type(self):
         """Returns a type distinguishing the custom item from the base class
 
@@ -69,3 +76,8 @@ class QBaseItem(QStandardItem):
             return True
         except (AttributeError, TypeError):
             return False
+
+    def __repr__(self):
+        return '<QBaseItem(DisplayRole={})>'.format(
+            self.data(role=Qt.DisplayRole)
+        )
