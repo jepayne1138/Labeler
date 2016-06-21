@@ -66,6 +66,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.actionSave.triggered.connect(self.save)
         self.actionSave_As.triggered.connect(self.save_as)
+        self.actionCount_Labels.triggered.connect(self.count_labels)
 
         self.showMaximized()
 
@@ -130,6 +131,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # Advance the word
         self.get_next()
+
+    @Slot()
+    def count_labels(self, event=None):
+        self.tm.count_labels()
 
     @Slot()
     def save(self, event=None):

@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 import json
 import xlrd
 import math
+import collections
 from labeler.models.config import Config, TextColorMap
 
 
@@ -177,7 +178,13 @@ class TableDictFactory:
         if HEADER not in self.data:
             self.data[HEADER] = {}
 
-        self.data[HEADER][column] = value
+        if column not in self.data[HEADER]:
+            self.data[HEADER][column] = {
+                'value': '',
+                'labels': {}
+            }
+
+        self.data[HEADER][column]['value'] = value
 
     def add_value(self, row, column, value):
         # Check that a value is not empty
@@ -498,6 +505,15 @@ class TagCell:
                 ret_list.append(str(item))
         return ret_list
 
+    def label_count(self):
+        ret_counts = collections.defaultdict(int)
+        for item in self.split:
+            if TagWord.is_inst(item):
+                # This item is a TagWord and we need to add the element
+                for tag in item.tags:
+                    ret_counts[tag] += 1
+        return ret_counts
+
 
 class TagManager:
 
@@ -717,18 +733,18 @@ class TagManager:
         root = self.generate_json()
         return json.dump(root, file_obj, **kwargs)
 
-
     def generate_json(self):
         """Header tagged with anticipated word tags?"""
         root = {'file': self.basename}
 
         if self.headers:
             root[HEADER] = {}
-            for column, header in self.headers.items():
-                root[HEADER][str(column)] = {
-                    'tags': [],
-                    'value': header,
-                }
+            for column, header_dict in self.headers.items():
+                root[HEADER][str(column)] = header_dict
+                # root[HEADER][str(column)] = {
+                #     'labels': {},
+                #     'value': header,
+                # }
 
         root[CONTENT] = {}
         for row in sorted(self.parsed.keys()):
@@ -737,3 +753,21 @@ class TagManager:
                 root[CONTENT][str(row)][str(column)] = self.parsed[row][column].json_element()
 
         return root
+
+    def count_labels(self):
+        if not self.headers:
+            raise NotImplementedError('Columns must have headers')
+
+        counts = {}
+        for row in self.parsed.keys():
+            for column in self.parsed[row].keys():
+                if column not in counts:
+                    counts[column] = collections.defaultdict(int)
+                for label, count in self.parsed[row][column].label_count().items():
+                    counts[column][label] += count
+
+        for column in self.headers.keys():
+            del self.headers[column]['labels']
+            self.headers[column]['labels'] = {}
+            for label, count in counts[column].items():
+                self.headers[column]['labels'][label] = count

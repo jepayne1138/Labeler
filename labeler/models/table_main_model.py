@@ -32,8 +32,8 @@ class TableMainModel(QTableModel):
 
         # Set headers
         if self.tm.headers:
-            for index, header in self.tm.headers.items():
-                self.setHeaderData(index, header)
+            for index, header_dict in self.tm.headers.items():
+                self.setHeaderData(index, header_dict['value'])
 
         # with open('dump.txt', 'w') as dump:
 
