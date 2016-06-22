@@ -15,3 +15,4 @@ labeled_files/
 # Whitelist
 !LICENSE.txt
 !README.md
+!requirements.txt
