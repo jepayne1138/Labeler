@@ -4,6 +4,7 @@ label as defined in the config.ini file"""
 import sqlite3
 import re
 import collections
+import itertools
 import labeler.models.tag_manager as tm
 import labeler.models.config as cfg
 
@@ -29,8 +30,20 @@ CREATE_FREQUENCY_TABLE = """
         UNIQUE(word, label)
     );
 """
+CREATE_BIGRAM_TABLE = """
+    CREATE TABLE IF NOT EXISTS bigram (
+        id      INTEGER     PRIMARY KEY,
+        label1  INTEGER,
+        label2  INTEGER,
+        count   INTEGER,
+        UNIQUE(label1, label2)
+    );
+"""
 INSERT_LABEL = """
     INSERT OR IGNORE INTO label (name) VALUES (?);
+"""
+INSERT_BIGRAMS = """
+    INSERT OR IGNORE INTO bigram (label1, label2, count) VALUES (?, ?, ?);
 """
 SELECT_LABELS = """
     SELECT name, id
@@ -47,6 +60,11 @@ UPDATE_FREQUENCY = """
             ), :count
         )
     );
+"""
+UPDATE_BIGRAMS = """
+    UPDATE OR IGNORE bigram
+    SET count=:count
+    WHERE label1=:label1 AND label2=:label2;
 """
 GET_PROBABILITIES = """
 SELECT
@@ -81,11 +99,18 @@ class WordBag:
         self.c = self.conn.cursor()
 
         # Create required tables if they don't exists
+        # Label table
         self.c.execute(CREATE_LABELS_TABLE)
         self.c.executemany(
             INSERT_LABEL, [(label,) for label in cfg.Config.labels.keys()]
         )
+        # Frequency table
         self.c.execute(CREATE_FREQUENCY_TABLE)
+        # Bigram table
+        self.c.execute(CREATE_BIGRAM_TABLE)
+        lbl_cnt = len(cfg.Config.labels)
+        for label1, label2 in itertools.product(range(lbl_cnt), range(lbl_cnt)):
+            self.c.execute(INSERT_BIGRAMS, (label1, label2, 0))
 
     def get_labels(self):
         self.c.execute(SELECT_LABELS).fetchall()
@@ -122,4 +147,4 @@ class WordBag:
 
     def label_probabilities(self, word):
         results = self.c.execute(GET_PROBABILITIES, {'word': word}).fetchall()
-        print(results)
+        print([x[1] for x in sorted(results)])

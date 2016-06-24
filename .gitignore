@@ -12,6 +12,9 @@ __pycache__/
 test*.py
 labeled_files/
 
+# Blacklist
+*word_bag.db
+
 # Whitelist
 !LICENSE.txt
 !README.md
