@@ -22,6 +22,7 @@ ENCODING = 'utf-8'
 XML_VERSON = '1.0'
 HEADER = 'header'
 CONTENT = 'content'
+FILE = 'file'
 COLUMN_TAG = 'c'
 ROW_TAG = 'r'
 
@@ -708,7 +709,7 @@ class TagManager:
         """Returns the parsed data with tags as and XML tagged document"""
         # TODO: Implement. We can get an XML Element from each TagCell, now
         # we need to make the whole XML tree.
-        root = ET.Element('file', attrib={'filename': self.basename})
+        root = ET.Element(FILE, attrib={'filename': self.basename})
         root.set('version', XML_VERSON)
 
         if self.headers:
@@ -735,7 +736,7 @@ class TagManager:
 
     def generate_json(self):
         """Header tagged with anticipated word tags?"""
-        root = {'file': self.basename}
+        root = {FILE: self.basename}
 
         if self.headers:
             root[HEADER] = {}
