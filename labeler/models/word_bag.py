@@ -79,7 +79,7 @@ UPDATE_BIGRAMS = """
 GET_PROBABILITIES = """
     SELECT
         counts.id AS id,
-        (counts.label_count + (0.25 / (SELECT COUNT(*) FROM label))) / (counts.total_count + 0.25) AS probability
+        (counts.label_count + (1.0 / (SELECT COUNT(*) FROM label))) / (counts.total_count + 1.0) AS probability
     FROM (
             SELECT
                 label.id AS id,
@@ -90,7 +90,7 @@ GET_PROBABILITIES = """
                     SELECT f.label, f.count AS count FROM frequency f WHERE f.word=:word
                 ) word_counts ON label.id=word_counts.label
             LEFT JOIN (
-                    SELECT SUM(f.count) AS total FROM frequency f WHERE f.word=:word
+                    SELECT COALESCE(SUM(f.count), 0) AS total FROM frequency f WHERE f.word=:word
                 ) total_counts
         ) counts
     ORDER BY counts.id ASC;
@@ -98,11 +98,12 @@ GET_PROBABILITIES = """
 GET_BIGRAM_PROBABILITIES = """
     SELECT
         bigram.id AS id,
-        (bigram.count + (0.25 / (SELECT COUNT(*) FROM bigram))) / (count.total_count + 0.25) AS probability
+        (bigram.count + (1.0 / (SELECT COUNT(*) FROM bigram))) / (count.total_count + 1.0) AS probability
     FROM bigram
     LEFT JOIN (
         SELECT sum(count) AS total_count FROM bigram
-    ) count;
+    ) count
+    ORDER BY bigram.label1 ASC, bigram.label2 ASC;
 """
 
 
@@ -130,7 +131,7 @@ class WordBag:
         self.c.execute(CREATE_BIGRAM_TABLE)
         lbl_cnt = len(cfg.Config.labels)
         for label1, label2 in itertools.product(range(lbl_cnt), range(lbl_cnt)):
-            self.c.execute(INSERT_BIGRAMS, (label1, label2, 0))
+            self.c.execute(INSERT_BIGRAMS, (label1 + 1, label2 + 1, 0))
         # Trained files table
         self.c.execute(CREATE_TRAINED_TABLE)
 
