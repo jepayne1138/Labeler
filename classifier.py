@@ -19,47 +19,14 @@ def classify_file(label_dict):
                     continue
                 classify_dict.append(word)
 
-        # For each row, apply the bigram classification algorithm
 
-
-# def test(word1, word2):
-#     bag = wb.WordBag()
-
-#     word1_prob_iter = map(lambda x: x[1], bag.raw_label_probabilities(word1))
-#     word1_array = np.fromiter(word1_prob_iter, np.float)
-#     label_count = word1_array.shape[0]
-#     word2_prob_iter = map(lambda x: x[1], bag.raw_label_probabilities(word2))
-#     word2_array = np.fromiter(word2_prob_iter, np.float)
-
-#     bigram_prob_iter1 = map(lambda x: x[1], bag.raw_bigram_probabilities_1_given_2())
-#     bigram_prob_iter2 = map(lambda x: x[1], bag.raw_bigram_probabilities_2_given_1())
-#     bigram_array1 = np.fromiter(bigram_prob_iter1, np.float).reshape(-1, label_count)
-#     bigram_array2 = np.fromiter(bigram_prob_iter2, np.float).reshape(-1, label_count)
-
-#     prod_array1 = (bigram_array2 * word1_array).T
-#     prod_array2 = bigram_array1 * word2_array
-
-#     fullprint(word1_array, 'word1_array')
-#     fullprint(bigram_array2, 'bigram_array2')
-#     fullprint(prod_array1, 'prod_array1')
-#     fullprint(prod_array2, 'prod_array2')
-
-#     sum_array = prod_array1 + prod_array2
-#     # print(sum_array)
-#     index = np.unravel_index(sum_array.argmax(), sum_array.shape)
-#     print((index[0] + 1, index[1] + 1))
-#     print(sum_array[index[0], index[1]])
-#     print(sum_array[2, 4])
-#     print(sum_array[4, 2])
-
-
-# def fullprint(array, filename='dump.txt'):
-#     opt = np.get_printoptions()
-#     np.set_printoptions(threshold=np.nan)
-#     with open(filename, 'w') as dumpfile:
-#         dumpfile.write(np.array_str(array))
-#     np.set_printoptions(**opt)
-#     return
+def fullprint(array, filename='dump.txt'):
+    opt = np.get_printoptions()
+    np.set_printoptions(threshold=np.nan)
+    with open(filename, 'w') as dumpfile:
+        dumpfile.write(np.array_str(array))
+    np.set_printoptions(**opt)
+    return
 
 
 # --------------------------------------------------------------------------
@@ -74,7 +41,7 @@ def word_probabilities(bag, *words):
     # First create a list of all the probability arrays for each word
     word_arrays = []
     for word in words:
-        word_arrays.append(monogram_probabilites(bag, word))
+        word_arrays.append(monogram_probabilites(bag, bag.clean_digits(word)))
 
     # Now we apply the bigram probability algorithm
     bigram_array = []
@@ -143,8 +110,22 @@ def bigram_probabilities(bag, first, second):
     bigram_array = bigram_array.reshape(-1, label_count)
 
     # Calculate the estimated first word probabilities based on the second
+    # fullprint(bigram_array, 'bigram_array.txt')
+    # fullprint(first, 'first.txt')
+    # fullprint(second, 'second.txt')
     est_first_prob = bigram_array * second
-    est_second_prob = bigram_array.T * first
+    # fullprint(est_first_prob, 'est_first_prob.txt')
+    # index = np.unravel_index(est_first_prob.argmax(), est_first_prob.shape)
+    # print(index)
+    # print(est_first_prob[index])
+    est_second_prob = (bigram_array.T * first).T
+    # fullprint(est_second_prob, 'est_second_prob.txt')
+    # index = np.unravel_index(est_second_prob.argmax(), est_second_prob.shape)
+    # print(index)
+    # print(est_second_prob[index])
+
+    print(est_first_prob.sum())
+    print(est_second_prob.sum())
 
     # Return the sum of the estimated probability arrays
     return est_first_prob + est_second_prob
@@ -162,8 +143,67 @@ def bigram_sequence(bigrams):
         raise ValueError('All bigram arrays must be the same shape')
 
     last = np.zeros(bigrams[0].shape)
+    path = []
     for array in bigrams[::-1]:
-        np.log(array) + last
+        last, index_array = sum_arrays(np.log(array), last)
+        path.insert(0, index_array)
+
+    index = np.unravel_index(last.argmax(), last.shape)
+    print(index)
+    # print(path)
+
+    first = index[0]
+    last = index[1]
+    for i, test in enumerate(bigrams):
+        print('[{}] Best bigram  : {}'.format(i + 1, (first, last)))
+        next_last = path[i][first, last]
+        first = last
+        last = next_last
+        index = np.unravel_index(test.argmax(), test.shape)
+        print('    Original best:  {}'.format(index))
+
+
+def sum_arrays(array1, array2):
+    """Sum two arrays: each column element summed with each row row element
+
+    This method can be though of as placing the two 2D arrays on the faces of
+    a cube and filling in the cube with the sum of the two elements that
+    intersect at that point. We rotate the arrays so that each row of the
+    first array has it's elements summed with each element of the column of the
+    second array with the corresponding index.
+
+    TODO:  Find a way to represent this with some ascii art for better
+      visualization (I will forget)
+    """
+    # Check that the arrays are the proper size
+    if not all_equal([array1.shape, array2.shape]):
+        raise ValueError('All bigram arrays must be the same shape')
+    if array1.ndim != 2 or array1.shape[0] != array1.shape[1]:
+        raise ValueError('Arrays must be 2D squares')
+
+    # Get the dimension of each array side
+    dim = array1.shape[0]
+
+    # First we broadcast the arrays to 3D arrays
+    cube_array1 = np.broadcast_to(array1, (dim,) * 3)
+    cube_array2 = np.broadcast_to(array2, (dim,) * 3)
+
+    # Transform the second cube array for proper element alignment
+    cube_array2 = np.moveaxis(cube_array2, 2, 0)
+
+    fullprint(array1, 'array1.txt')
+
+    # Sum the cubes
+    cube = cube_array1 + cube_array2
+
+    # Calculate the maximum values for axis=0
+    max_array = np.amax(cube, axis=0)
+
+    # Calculate the indices of the maximum values for axis=0
+    max_indicies = np.argmax(cube, axis=0)
+
+    # Return the maximum values and indicies of those values as two 2D arrays
+    return (max_array, max_indicies)
 
 
 def all_equal(*items):
@@ -171,7 +211,8 @@ def all_equal(*items):
 
 
 if __name__ == '__main__':
-    TEST_STRING = '302 N'
+    TEST_STRING = '454 W DAYTON ST APT 212'
+    TEST_STRING = '1673 RIVER BEND TER'
     bag = wb.WordBag()
     bigrams = word_probabilities(bag, *TEST_STRING.split())
     print(len(bigrams))
