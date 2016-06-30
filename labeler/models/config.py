@@ -14,11 +14,13 @@ class Config:
     config_path = 'config.ini'
     LABELS_SECTION = 'Labels'
     HEADER_SECTION = 'Headers'
+    PUNCTUATION_SECTION = 'Punctuation'
     OPACITY_SECTION = 'Opacity'
     DEFAULT_OPACITY = 255
 
     labels = OrderedDict()
     headers = OrderedDict()
+    punctuation = OrderedDict()
     opacity = None
     percent_opacity = None
 
@@ -50,6 +52,10 @@ class Config:
         for k, v in parser[cls.HEADER_SECTION].items():
             # Keep as a dict for now in case we want to use values later
             cls.headers[k] = v
+
+        # Get punctuation
+        for k, v in parser[cls.PUNCTUATION_SECTION].items():
+            cls.punctuation[k] = v.strip('"')
 
     @classmethod
     def initialize_config(cls, path=None):

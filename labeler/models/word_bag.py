@@ -71,10 +71,10 @@ INSERT_FILENAME = """
     INSERT OR FAIL INTO trained (name) VALUES (?);
 """
 INSERT_HEADER = """
-    INSERT OR FAIL INTO header (name) VALUES (?);
+    INSERT OR IGNORE INTO header (name) VALUES (?);
 """
 INSERT_HEADER_FREQUENCY = """
-    INSERT OR FAIL INTO header_frequency (header, label, count) VALUES (?, ?, ?);
+    INSERT OR IGNORE INTO header_frequency (header, label, count) VALUES (?, ?, ?);
 """
 SELECT_LABELS = """
     SELECT name, id

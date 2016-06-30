@@ -1,8 +1,140 @@
 import collections
+import itertools
 import numpy as np
 import scipy.spatial as spspatial
 import labeler.models.tag_manager as tm
 import labeler.models.word_bag as wb
+import labeler.models.config as cfg
+
+
+cfg.Config.initialize_config()
+
+
+class NetworkInput:
+
+    """Object that will be passed to the NN for further classification"""
+    # TODO:  Separate this into a separate modules?
+
+    LENGTH_CLASSES = 10
+
+    @classmethod
+    def vector_length(cls):
+        """Gets the length the output vector will be"""
+        length = 0
+        length += len(cfg.Config.labels) * 3  # Label probs for each word
+        length += len(cfg.Config.headers)  # Encoded headers
+        length += len(cfg.Config.punctuation) * 2  # Left and right punctuation
+        length += cls.LENGTH_CLASSES  # Length classes vector
+        return length
+
+    @classmethod
+    def inputs_from_tag_cell(cls, tag_cell, header):
+        """Returns a list of NetworkInput instances for the tag_cell"""
+        word_list = tag_cell.split
+        # Add cell beginning and ending information
+        word_list.insert(0, '')
+        word_list.insert(0, np.zeros((len(cfg.Config.labels),)))
+        word_list.append('')
+        word_list.append(np.zeros((len(cfg.Config.labels),)))
+
+        # Iterate the word list in groups of 5 (left, punc, word, punc, right)
+        # TODO:  I'm tired... better way of doing this (I'm sure there is)
+        network_inputs = []
+        for l_word, l_punc, word, r_punc, r_word in [word_list[i:i + 5] for i in range(0, len(word_list) - 4, 2)]:
+            try:
+                l_probs = l_word.tag_probabilities
+            except AttributeError:
+                l_probs = l_word
+            try:
+                r_probs = r_word.tag_probabilities
+            except AttributeError:
+                r_probs = r_word
+
+            net_input = cls(
+                word, l_probs, r_probs, l_punc, r_punc, header
+            )
+            network_inputs.append(net_input.vectorize())
+        return network_inputs
+
+    def __init__(
+            self, tag_word, left_word_probs, right_word_probs,
+            left_punc, right_punc, header, label=None):
+        """Represent the input to the neural network
+
+        Args:
+          header (int): Index of the desired header (zero-indexed)
+        """
+        # Use tag_probabilities on the tag word objects
+        self.tag_word = tag_word
+        self.left_word_probs = left_word_probs
+        self.right_word_probs = right_word_probs
+        self.left_punc = left_punc
+        self.right_punc = right_punc
+        self.header = header
+        # TODO:  Just pull this from the tag_word instance?
+        self.label = label  # If not None, we are training
+
+        # print('\nInitializing NetworkInput:')
+        # print('         tag_word : {}'.format(repr(self.tag_word)))
+        # print('  left_word_probs : {}'.format(self.left_word_probs))
+        # print(' right_word_probs : {}'.format(self.right_word_probs))
+        # print('        left_punc : "{}"'.format(self.left_punc))
+        # print('       right_punc : "{}"'.format(self.right_punc))
+        # print('           header : {}'.format(self.header))
+
+        self.left_punc_list = self.encode_punc(self.left_punc)
+        self.right_punc_list = self.encode_punc(self.right_punc)
+        self.header_list = self.encode_header(self.header)
+        self.length_list = self.encode_length(str(self.tag_word))
+
+        # Other inputs:
+        #  Contains numerals?
+
+    def vectorize(self):
+        return np.fromiter(
+            itertools.chain(
+                self.tag_word.tag_probabilities,
+                self.left_word_probs,
+                self.right_word_probs,
+                self.header_list,
+                self.left_punc_list,
+                self.right_punc_list,
+                self.length_list
+            ), np.float64
+        )
+
+    def encode_punc(self, string):
+        """Get a list that represents which punctuation is in the string"""
+        # TODO:  Check if this is faster with numpy that regular lists
+        punc_list = [0] * len(cfg.Config.punctuation)
+        for index, punc_str in enumerate(cfg.Config.punctuation.values()):
+            if punc_str in string:
+                punc_list[index] += 1  # TODO:  Check assign or add faster
+        return punc_list
+
+    def encode_header(self, header):
+        """Get a list that represents the given header"""
+        header_list = [0] * len(cfg.Config.headers)
+        header_list[header] += 1
+        return header_list
+
+    def encode_length(self, string):
+        """Return list indicating string length class
+
+        Possible classes are each individual length 1-9 and 10+
+        """
+        length_list = [0] * self.LENGTH_CLASSES
+        try:
+            length_list[(len(string) - 1)] += 1
+        except IndexError:
+            length_list[(self.LENGTH_CLASSES - 1)] += 1
+        return length_list
+
+    def encode_label(self, label):
+        """Get a list that represents the given label (for training)"""
+        label_list = [0] * len(cfg.Config.labels)
+        label_list[label] += 1
+        return label_list
 
 
 def classify_file(label_dict):
@@ -32,13 +164,15 @@ def classify_tag_manager(tag_manager):
             continue
         # Otherwise cell is a tm.TagCell instance
         classify_cell(cell, label_count, bag=bag)
-    header_map = {res['id'] - 1: res['name'] for res in bag.get_headers()}
+    # header_map = {res['id'] - 1: res['name'] for res in bag.get_headers()}
     header_arrays, header_columns = header_prob_array(label_count, bag=bag)
     best_header_indicies = best_header(header_arrays, bag=bag)
-    final_headers = [header_map[head_idx] for head_idx in best_header_indicies]
-    with open('header_array.npy', 'wb') as array_dump:
-        np.save(array_dump, header_arrays)
-    print(final_headers)
+    # final_headers = [header_map[head_idx] for head_idx in best_header_indicies]
+    # with open('header_array.npy', 'wb') as array_dump:
+    #     np.save(array_dump, header_arrays)
+    # print(final_headers)
+
+    return best_header_indicies
 
 
 def classify_cell(tag_cell, label_count, bag=None):
@@ -185,9 +319,9 @@ def bigram_probabilities(bag, first, second):
     # bigram_array = np.fromiter(bigram_prog_iter, np.float64)
     # bigram_array = bigram_array.reshape(-1, label_count)
 
-    fullprint(bigram_array_first_cond_second, 'bigram_array_first_cond_second.txt')
-    fullprint(bigram_array_second_cond_first, 'bigram_array_second_cond_first.txt')
-    fullprint(second, 'second.txt')
+    # fullprint(bigram_array_first_cond_second, 'bigram_array_first_cond_second.txt')
+    # fullprint(bigram_array_second_cond_first, 'bigram_array_second_cond_first.txt')
+    # fullprint(second, 'second.txt')
 
     # print(
     #     'bigram_array_first_cond_second: column sums = {}'.format(
@@ -369,5 +503,22 @@ def test2():
     classify_tag_manager(tag_manager)
 
 
+def test3():
+    FILE_PATH = 'labeled_files/e34563c.json'
+    tag_manager = tm.TagManager.from_json(FILE_PATH)
+    header_indicies = classify_tag_manager(tag_manager)
+
+    for index in tag_manager.index_iterator():
+        cell = tag_manager.get(*index)
+        if cell is None:
+            continue
+        # Otherwise cell is a tm.TagCell instance
+        header_int = header_indicies[cell.column]
+        cell_inputs = NetworkInput.inputs_from_tag_cell(cell, header_int)
+
+        print(cell_inputs)
+        return  # Only do one for now
+
+
 if __name__ == '__main__':
-    test2()
+    test3()
