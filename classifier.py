@@ -1,6 +1,8 @@
+import collections
+import numpy as np
+import scipy.spatial as spspatial
 import labeler.models.tag_manager as tm
 import labeler.models.word_bag as wb
-import numpy as np
 
 
 def classify_file(label_dict):
@@ -20,15 +22,60 @@ def classify_file(label_dict):
                 classify_dict.append(word)
 
 
-def classify_cell(tag_cell):
-    """Takes word list a single cell in parsed dict in input words"""
-    words = tag_cell.iter_word_strings()
-    bag = wb.Bag()
-    word_prob_list = word_probabilities_list([str(x) for x in words], bag=bag)
+def classify_tag_manager(tag_manager):
+    bag = wb.WordBag()
 
+    label_count = collections.defaultdict(int)  # key = (column, label)
+    for index in tag_manager.index_iterator():
+        cell = tag_manager.get(*index)
+        if cell is None:
+            continue
+        # Otherwise cell is a tm.TagCell instance
+        classify_cell(cell, label_count, bag=bag)
+    header_map = {res['id'] - 1: res['name'] for res in bag.get_headers()}
+    header_arrays, header_columns = header_prob_array(label_count, bag=bag)
+    best_header_indicies = best_header(header_arrays, bag=bag)
+    final_headers = [header_map[head_idx] for head_idx in best_header_indicies]
+    print(header_arrays)
+    print(final_headers)
+
+
+def classify_cell(tag_cell, label_count, bag=None):
+    """Takes word list a single cell in parsed dict in input words"""
+    print('\nClassifying cell: ({cell.row}, {cell.column})'.format(cell=tag_cell))
+
+    if bag is None:
+        bag = wb.WordBag()
+    labels = [x['name'] for x in bag.get_labels()]
+
+    words = list(tag_cell.iter_word_strings())
+    word_prob_list = word_probabilities_list([str(x) for x in words], bag=bag)
     for word, probs in zip(words, word_prob_list):
         word.tag_probabilities = probs
 
+        best_label = probs.argmax()
+        print('{: >15} : {}'.format(str(word), labels[best_label]))
+        label_count[(word.column, best_label)] += 1
+
+
+def header_prob_array(header_dict, bag=None):
+    """Of format {(column, label): count}"""
+    if bag is None:
+        bag = wb.WordBag()
+
+    label_count = len(bag.get_labels())
+    column_dict = {}
+    for (column, label), count in header_dict.items():
+        if column not in column_dict:
+            column_dict[column] = np.zeros((label_count,))
+        column_dict[column][label] += count
+
+    count_arrays = []
+    column_indicies = []
+    for column, count_array in sorted(column_dict.items()):
+        count_arrays.append(count_array / count_array.sum())
+        column_indicies.append(column)
+    return (np.stack(count_arrays), column_indicies)
 
 def word_probabilities_list(words, bag=None):
     if bag is None:
@@ -58,9 +105,9 @@ def word_probabilities(bag, *words):
     # First create a list of all the probability arrays for each word
     word_arrays = []
     for word in words:
-        word_arrays.append(monogram_probabilites(bag, bag.clean_digits(word)))
+        word_arrays.append(monogram_probabilites(bag, bag.clean_digits(word.upper())))
 
-    if len(words) == 1:
+    if len(words) <= 1:
         # No possible bigrams
         return word_arrays
 
@@ -277,11 +324,25 @@ def sum_arrays(array1, array2):
     return (max_array, max_indicies)
 
 
+def best_header(header_probs, bag=None):
+    if bag is None:
+        bag = wb.WordBag()
+
+    label_count = len(bag.get_labels())
+    header_array = np.fromiter(
+        map(lambda x: x['probability'], bag.header_probabilities()), np.float64
+    ).reshape(-1, label_count)
+
+    kdtree = spspatial.KDTree(header_array)
+    _, nearest = kdtree.query(header_probs, 1)
+    return nearest
+
+
 def all_equal(*items):
     return all(items[0] == item for item in items)
 
 
-if __name__ == '__main__':
+def test1():
     TEST_STRING = '75 WEST COMMERCIAL STREET SUITE 104'
 
     words = TEST_STRING.upper().split()
@@ -298,9 +359,13 @@ if __name__ == '__main__':
             if i >= 3:
                 break
             print('{}{: <15} = {}'.format(' ' * 40, name, prob))
-            print('{}size = {}'.format(' ' * 57, word_probs.nbytes))
-    # print(len(bigrams))
 
-    # for i in range(len(bigrams)):
-    #     index = np.unravel_index(bigrams[i].argmax(), bigrams[i].shape)
-    #     print((index[0] + 1, index[1] + 1))
+
+def test2():
+    FILE_PATH = 'labeled_files/e34563c.json'
+    tag_manager = tm.TagManager.from_json(FILE_PATH)
+    classify_tag_manager(tag_manager)
+
+
+if __name__ == '__main__':
+    test2()

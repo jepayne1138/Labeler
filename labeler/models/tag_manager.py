@@ -359,7 +359,7 @@ class TagCell:
 
     def iter_word_strings(self):
         for word in self.split:
-            if isinstance(word, TempWord):
+            if isinstance(word, TagWord):
                 yield word
         return
 
@@ -628,6 +628,7 @@ class TagManager:
             next(index_gen)  # Starts by getting current cell
             next_row, next_col = next(index_gen)
             return self.get(next_row, next_col)
+            # return self.get(*next(index_gen))
         except StopIteration:
             return None
 

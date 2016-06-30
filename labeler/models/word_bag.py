@@ -154,6 +154,24 @@ GET_BIGRAM_PROB_SECOND_COND_FIRST = """
     ) count ON count.label=bigram.label1
     ORDER BY bigram.label2 ASC, bigram.label1 ASC;
 """
+GET_HEADER_PROBIBILITIES = """
+    SELECT
+        head.id AS id,
+        head.header AS header,
+        head.label AS label,
+        head.count AS count,
+        count.total_count AS count,
+        COALESCE(CAST(head.count AS FLOAT) / count.total_count, 0.0) AS probability
+    FROM header_frequency head
+    LEFT JOIN (
+        SELECT
+            hf.header AS header,
+            hf.label AS label,
+            sum(hf.count) AS total_count
+        FROM header_frequency hf
+        GROUP BY header
+    ) count ON count.header=head.header;
+"""
 
 
 class WordBag:
@@ -285,16 +303,19 @@ class WordBag:
         return re.sub('\d', '0', string)
 
     def raw_label_probabilities(self, word):
-        results = self.c.execute(GET_PROBABILITIES, {'word': word}).fetchall()
-        return results
+        return self.c.execute(GET_PROBABILITIES, {'word': word}).fetchall()
 
     def bigram_prob_first_cond_second(self):
-        results = self.c.execute(GET_BIGRAM_PROB_FIRST_COND_SECOND).fetchall()
-        return results
+        return self.c.execute(GET_BIGRAM_PROB_FIRST_COND_SECOND).fetchall()
 
     def bigram_prob_second_cond_first(self):
-        results = self.c.execute(GET_BIGRAM_PROB_SECOND_COND_FIRST).fetchall()
-        return results
+        return self.c.execute(GET_BIGRAM_PROB_SECOND_COND_FIRST).fetchall()
+
+    def header_probabilities(self):
+        return self.c.execute(GET_HEADER_PROBIBILITIES).fetchall()
+
+    def get_headers(self):
+        return self.c.execute(SELECT_HEADERS).fetchall()
 
     def label_probabilities(self, word):
         results = self.c.execute(GET_PROBABILITIES, {'word': word}).fetchall()
