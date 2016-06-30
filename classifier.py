@@ -48,8 +48,8 @@ def word_probabilities(bag, *words):
     for first, second in zip(word_arrays, word_arrays[1:]):
         # First and second are the np.arrays with classification probabilities
         bigram_array.append(bigram_probabilities(bag, first, second))
-    bigram_sequence(bigram_array)
-    return bigram_array
+    word_probs = bigram_sequence2(bigram_array)
+    return word_probs
 
 
 def monogram_probabilites(bag, word):
@@ -66,7 +66,7 @@ def monogram_probabilites(bag, word):
         index of the probability in the array
     """
     word_prob_iter = map(lambda x: x[1], bag.raw_label_probabilities(word))
-    return np.fromiter(word_prob_iter, np.float)
+    return np.fromiter(word_prob_iter, np.float64)
 
 
 def bigram_probabilities(bag, first, second):
@@ -105,30 +105,57 @@ def bigram_probabilities(bag, first, second):
     label_count = first.shape[0]
 
     # Get the bigram array from the word bag
-    bigram_prog_iter = map(lambda x: x[1], bag.raw_bigram_probabilities())
-    bigram_array = np.fromiter(bigram_prog_iter, np.float)
-    bigram_array = bigram_array.reshape(-1, label_count)
+    bigram_array_first_cond_second = np.fromiter(
+        map(lambda x: x['probability'], bag.bigram_prob_first_cond_second()), np.float64
+    ).reshape(-1, label_count)
+    bigram_array_second_cond_first = np.fromiter(
+        map(lambda x: x['probability'], bag.bigram_prob_second_cond_first()), np.float64
+    ).reshape(-1, label_count)
+    # bigram_prog_iter = map(lambda x: x[1], bag.raw_bigram_probabilities())
+    # bigram_array = np.fromiter(bigram_prog_iter, np.float64)
+    # bigram_array = bigram_array.reshape(-1, label_count)
+
+    fullprint(bigram_array_first_cond_second, 'bigram_array_first_cond_second.txt')
+    fullprint(bigram_array_second_cond_first, 'bigram_array_second_cond_first.txt')
+    fullprint(second, 'second.txt')
+
+    # print(
+    #     'bigram_array_first_cond_second: column sums = {}'.format(
+    #         bigram_array_first_cond_second.sum(axis=0)
+    #     )
+    # )
+    # print(
+    #     'bigram_array_second_cond_first: column sums = {}'.format(
+    #         bigram_array_second_cond_first.sum(axis=0)
+    #     )
+    # )
 
     # Calculate the estimated first word probabilities based on the second
     # fullprint(bigram_array, 'bigram_array.txt')
     # fullprint(first, 'first.txt')
     # fullprint(second, 'second.txt')
-    est_first_prob = bigram_array * second
+    est_first_prob = bigram_array_first_cond_second * second
     # fullprint(est_first_prob, 'est_first_prob.txt')
     # index = np.unravel_index(est_first_prob.argmax(), est_first_prob.shape)
     # print(index)
     # print(est_first_prob[index])
-    est_second_prob = (bigram_array.T * first).T
+    est_second_prob = (bigram_array_second_cond_first * first).T
     # fullprint(est_second_prob, 'est_second_prob.txt')
     # index = np.unravel_index(est_second_prob.argmax(), est_second_prob.shape)
     # print(index)
     # print(est_second_prob[index])
 
-    print(est_first_prob.sum())
-    print(est_second_prob.sum())
+    # print('est_first_prob: {}'.format(est_first_prob.sum()))
+    # print('est_second_prob: {}'.format(est_second_prob.sum()))
 
     # Return the sum of the estimated probability arrays
-    return est_first_prob + est_second_prob
+    ret_array = (est_first_prob + est_second_prob) / 2
+
+    # print('ret_array [0]: {}'.format(ret_array.sum(axis=0)))
+    # print('ret_array [1]: {}'.format(ret_array.sum(axis=1)))
+    # fullprint(ret_array, 'ret_array.txt')
+
+    return ret_array
 
 
 def bigram_sequence(bigrams):
@@ -163,6 +190,29 @@ def bigram_sequence(bigrams):
         print('    Original best:  {}'.format(index))
 
 
+def bigram_sequence2(bigrams):
+    # Validate all bigram arrays are the same shape
+    if not bigrams:
+        raise ValueError('Must have at least 1 bigram array')
+    if not all_equal([array.shape for array in bigrams]):
+        raise ValueError('All bigram arrays must be the same shape')
+
+    word_probs = []
+    last_array = None
+    for word_array in bigrams:
+        # Sum axis=1 for first probabilities, axis=0 for second
+        first_prob = word_array.sum(axis=1)
+        second_prob = word_array.sum(axis=0)
+        if last_array is None:
+            word_probs.append(first_prob)
+            last_array = second_prob
+        else:
+            word_probs.append((last_array + first_prob) / 2.0)  # Faster than np.mean
+            last_array = second_prob
+    word_probs.append(last_array)
+    return word_probs
+
+
 def sum_arrays(array1, array2):
     """Sum two arrays: each column element summed with each row row element
 
@@ -191,7 +241,7 @@ def sum_arrays(array1, array2):
     # Transform the second cube array for proper element alignment
     cube_array2 = np.moveaxis(cube_array2, 2, 0)
 
-    fullprint(array1, 'array1.txt')
+    # fullprint(array1, 'array1.txt')
 
     # Sum the cubes
     cube = cube_array1 + cube_array2
@@ -211,12 +261,24 @@ def all_equal(*items):
 
 
 if __name__ == '__main__':
-    TEST_STRING = '454 W DAYTON ST APT 212'
-    TEST_STRING = '1673 RIVER BEND TER'
-    bag = wb.WordBag()
-    bigrams = word_probabilities(bag, *TEST_STRING.split())
-    print(len(bigrams))
+    TEST_STRING = '75 WEST COMMERCIAL STREET STE 104'
 
-    for i in range(len(bigrams)):
-        index = np.unravel_index(bigrams[i].argmax(), bigrams[i].shape)
-        print((index[0] + 1, index[1] + 1))
+    words = TEST_STRING.upper().split()
+
+    bag = wb.WordBag()
+    word_probs_list = word_probabilities(bag, *words)
+
+    labels = [x['name'] for x in bag.get_labels()]
+    print(TEST_STRING)
+    for word, word_probs in zip(words, word_probs_list):
+        print('{: >14} : {}'.format(word, labels[word_probs.argmax()]))
+        all_probs = sorted(zip(labels, word_probs), key=lambda x: x[1], reverse=True)
+        for i, (name, prob) in enumerate(all_probs):
+            if i >= 3:
+                break
+            print('{}{: <15} = {}'.format(' '*40, name, prob))
+    # print(len(bigrams))
+
+    # for i in range(len(bigrams)):
+    #     index = np.unravel_index(bigrams[i].argmax(), bigrams[i].shape)
+    #     print((index[0] + 1, index[1] + 1))

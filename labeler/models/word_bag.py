@@ -105,6 +105,30 @@ GET_BIGRAM_PROBABILITIES = """
     ) count
     ORDER BY bigram.label1 ASC, bigram.label2 ASC;
 """
+GET_BIGRAM_PROB_FIRST_COND_SECOND = """
+    SELECT
+        bigram.id AS id,
+        bigram.label1 AS label1,
+        bigram.label2 AS label2,
+        (bigram.count + (1.0 / (SELECT COUNT(*) FROM label))) / (count.total_count + 1.0) AS probability
+    FROM bigram
+    LEFT JOIN (
+            SELECT bigram.label2 AS label, sum(count) AS total_count FROM bigram GROUP BY label2
+    ) count ON count.label=bigram.label2
+    ORDER BY bigram.label1 ASC, bigram.label2 ASC;
+"""
+GET_BIGRAM_PROB_SECOND_COND_FIRST = """
+    SELECT
+        bigram.id AS id,
+        bigram.label1 AS label1,
+        bigram.label2 AS label2,
+        (bigram.count + (1.0 / (SELECT COUNT(*) FROM label))) / (count.total_count + 1.0) AS probability
+    FROM bigram
+    LEFT JOIN (
+            SELECT bigram.label1 AS label, sum(count) AS total_count FROM bigram GROUP BY label1
+    ) count ON count.label=bigram.label1
+    ORDER BY bigram.label2 ASC, bigram.label1 ASC;
+"""
 
 
 class WordBag:
@@ -117,6 +141,7 @@ class WordBag:
 
     def __init__(self, initialize=False):
         self.conn = sqlite3.connect(DB_PATH)
+        self.conn.row_factory = sqlite3.Row
         self.c = self.conn.cursor()
 
         # Create required tables if they don't exists
@@ -136,7 +161,7 @@ class WordBag:
         self.c.execute(CREATE_TRAINED_TABLE)
 
     def get_labels(self):
-        self.c.execute(SELECT_LABELS).fetchall()
+        return self.c.execute(SELECT_LABELS).fetchall()
 
     def label_frequency(self, label_dict):
         """Give the result of reading a labeled JSON file"""
@@ -203,6 +228,14 @@ class WordBag:
 
     def raw_bigram_probabilities(self):
         results = self.c.execute(GET_BIGRAM_PROBABILITIES).fetchall()
+        return results
+
+    def bigram_prob_first_cond_second(self):
+        results = self.c.execute(GET_BIGRAM_PROB_FIRST_COND_SECOND).fetchall()
+        return results
+
+    def bigram_prob_second_cond_first(self):
+        results = self.c.execute(GET_BIGRAM_PROB_SECOND_COND_FIRST).fetchall()
         return results
 
     def label_probabilities(self, word):
