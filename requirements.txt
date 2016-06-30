@@ -1,6 +1,7 @@
 Keras==1.0.4
 PySide==1.2.2
 Theano==0.8.2
+h5py==2.6.0
 numpy==1.11.1-mkl
 scipy==0.18.0rc1
 six==1.10.0
