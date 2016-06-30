@@ -36,7 +36,8 @@ def classify_tag_manager(tag_manager):
     header_arrays, header_columns = header_prob_array(label_count, bag=bag)
     best_header_indicies = best_header(header_arrays, bag=bag)
     final_headers = [header_map[head_idx] for head_idx in best_header_indicies]
-    print(header_arrays)
+    with open('header_array.npy', 'wb') as array_dump:
+        np.save(array_dump, header_arrays)
     print(final_headers)
 
 
@@ -76,6 +77,7 @@ def header_prob_array(header_dict, bag=None):
         count_arrays.append(count_array / count_array.sum())
         column_indicies.append(column)
     return (np.stack(count_arrays), column_indicies)
+
 
 def word_probabilities_list(words, bag=None):
     if bag is None:

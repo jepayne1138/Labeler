@@ -177,9 +177,10 @@ GET_HEADER_PROBIBILITIES = """
 class WordBag:
 
     def __enter__(self):
-        pass
+        return self
 
     def __exit__(self, type, value, traceback):
+        self.conn.commit()
         self.conn.close()
 
     def __init__(self, initialize=False):
@@ -267,14 +268,15 @@ class WordBag:
                         continue
 
         # Update monogram label counts
-        for (clean_word, int_tag), count in count_dict.items():
-            self.c.execute(
-                UPDATE_FREQUENCY, {
-                    'word': clean_word,
-                    'label': int_tag,
-                    'count': count
-                }
-            )
+        self.update_frequency(count_dict)
+        # for (clean_word, int_tag), count in count_dict.items():
+        #     self.c.execute(
+        #         UPDATE_FREQUENCY, {
+        #             'word': clean_word,
+        #             'label': int_tag,
+        #             'count': count
+        #         }
+        #     )
 
         # Update bigram label counts
         for (label1, label2), count in bigram_dict.items():
@@ -297,6 +299,17 @@ class WordBag:
             )
 
         self.conn.commit()
+
+    def update_frequency(self, count_dict):
+        """count_dict format -> {(word, label): count}"""
+        for (clean_word, int_tag), count in count_dict.items():
+            self.c.execute(
+                UPDATE_FREQUENCY, {
+                    'word': clean_word,
+                    'label': int_tag,
+                    'count': count
+                }
+            )
 
     def clean_digits(self, string):
         """Replaces all digits in the string with zeros for standardization"""

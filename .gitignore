@@ -14,6 +14,8 @@ labeled_files/
 
 # Blacklist
 *word_bag.db
+*import_db.py
+*lookup original.db
 
 # Whitelist
 !LICENSE.txt
