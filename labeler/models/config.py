@@ -13,10 +13,12 @@ class Config:
 
     config_path = 'config.ini'
     LABELS_SECTION = 'Labels'
+    HEADER_SECTION = 'Headers'
     OPACITY_SECTION = 'Opacity'
     DEFAULT_OPACITY = 255
 
     labels = OrderedDict()
+    headers = OrderedDict()
     opacity = None
     percent_opacity = None
 
@@ -43,6 +45,11 @@ class Config:
             if rgb is not None:
                 cls.labels[k] = rgb + (cls.percent_opacity,)
         # cls.labels = dict(parser[cls.LABELS_SECTION])
+
+        # Get headers
+        for k, v in parser[cls.HEADER_SECTION].items():
+            # Keep as a dict for now in case we want to use values later
+            cls.headers[k] = v
 
     @classmethod
     def initialize_config(cls, path=None):

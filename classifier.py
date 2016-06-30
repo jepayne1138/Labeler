@@ -20,6 +20,23 @@ def classify_file(label_dict):
                 classify_dict.append(word)
 
 
+def classify_cell(tag_cell):
+    """Takes word list a single cell in parsed dict in input words"""
+    words = tag_cell.iter_word_strings()
+    bag = wb.Bag()
+    word_prob_list = word_probabilities_list([str(x) for x in words], bag=bag)
+
+    for word, probs in zip(words, word_prob_list):
+        word.tag_probabilities = probs
+
+
+def word_probabilities_list(words, bag=None):
+    if bag is None:
+        bag = wb.WordBag()
+
+    return word_probabilities(bag, *words)
+
+
 def fullprint(array, filename='dump.txt'):
     opt = np.get_printoptions()
     np.set_printoptions(threshold=np.nan)
@@ -42,6 +59,10 @@ def word_probabilities(bag, *words):
     word_arrays = []
     for word in words:
         word_arrays.append(monogram_probabilites(bag, bag.clean_digits(word)))
+
+    if len(words) == 1:
+        # No possible bigrams
+        return word_arrays
 
     # Now we apply the bigram probability algorithm
     bigram_array = []
@@ -261,7 +282,7 @@ def all_equal(*items):
 
 
 if __name__ == '__main__':
-    TEST_STRING = '75 WEST COMMERCIAL STREET STE 104'
+    TEST_STRING = '75 WEST COMMERCIAL STREET SUITE 104'
 
     words = TEST_STRING.upper().split()
 
@@ -276,7 +297,8 @@ if __name__ == '__main__':
         for i, (name, prob) in enumerate(all_probs):
             if i >= 3:
                 break
-            print('{}{: <15} = {}'.format(' '*40, name, prob))
+            print('{}{: <15} = {}'.format(' ' * 40, name, prob))
+            print('{}size = {}'.format(' ' * 57, word_probs.nbytes))
     # print(len(bigrams))
 
     # for i in range(len(bigrams)):

@@ -94,7 +94,6 @@ class TableDictFactory:
                     cls.json_parse_words(content)
                 )
 
-
         return table_factory.generate()
 
     @classmethod
@@ -236,6 +235,7 @@ class TagWord:
         self.column = column
         self.index = index
         self.tags = set() if tags is None else set(tags)
+        self.tag_probabilities = None
 
     def __str__(self):
         return self.word
@@ -356,6 +356,12 @@ class TagCell:
             else:
                 split.append(word)
         return split
+
+    def iter_word_strings(self):
+        for word in self.split:
+            if isinstance(word, TempWord):
+                yield word
+        return
 
     def __str__(self):
         return self.string

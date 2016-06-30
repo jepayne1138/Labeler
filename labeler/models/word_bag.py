@@ -40,6 +40,21 @@ CREATE_BIGRAM_TABLE = """
         UNIQUE(label1, label2)
     );
 """
+CREATE_HEADER_TABLE = """
+    CREATE TABLE IF NOT EXISTS header (
+        id      INTEGER     PRIMARY KEY,
+        name    TEXT        UNIQUE
+    );
+"""
+CREATE_HEADER_FREQUENCY_TABLE = """
+    CREATE TABLE IF NOT EXISTS header_frequency (
+        id      INTEGER     PRIMARY KEY,
+        header  INTEGER,
+        label   INTEGER,
+        count   INTEGER,
+        UNIQUE(header, label)
+    );
+"""
 CREATE_TRAINED_TABLE = """
     CREATE TABLE IF NOT EXISTS trained (
         id      INTEGER     PRIMARY KEY,
@@ -55,9 +70,19 @@ INSERT_BIGRAMS = """
 INSERT_FILENAME = """
     INSERT OR FAIL INTO trained (name) VALUES (?);
 """
+INSERT_HEADER = """
+    INSERT OR FAIL INTO header (name) VALUES (?);
+"""
+INSERT_HEADER_FREQUENCY = """
+    INSERT OR FAIL INTO header_frequency (header, label, count) VALUES (?, ?, ?);
+"""
 SELECT_LABELS = """
     SELECT name, id
     FROM label;
+"""
+SELECT_HEADERS = """
+    SELECT name, id
+    FROM header;
 """
 UPDATE_FREQUENCY = """
     INSERT OR REPLACE INTO frequency (
@@ -70,6 +95,16 @@ UPDATE_FREQUENCY = """
             ), :count
         )
     );
+"""
+UPDATE_HEADER_FREQUENCY = """
+    UPDATE OR IGNORE header_frequency
+    SET count=COALESCE(
+        (SELECT count + :count
+         FROM header_frequency
+         WHERE header=:header AND label=:label
+        ), :count
+    )
+    WHERE header=:header AND label=:label;
 """
 UPDATE_BIGRAMS = """
     UPDATE OR IGNORE bigram
@@ -94,16 +129,6 @@ GET_PROBABILITIES = """
                 ) total_counts
         ) counts
     ORDER BY counts.id ASC;
-"""
-GET_BIGRAM_PROBABILITIES = """
-    SELECT
-        bigram.id AS id,
-        (bigram.count + (1.0 / (SELECT COUNT(*) FROM bigram))) / (count.total_count + 1.0) AS probability
-    FROM bigram
-    LEFT JOIN (
-        SELECT sum(count) AS total_count FROM bigram
-    ) count
-    ORDER BY bigram.label1 ASC, bigram.label2 ASC;
 """
 GET_BIGRAM_PROB_FIRST_COND_SECOND = """
     SELECT
@@ -159,6 +184,16 @@ class WordBag:
             self.c.execute(INSERT_BIGRAMS, (label1 + 1, label2 + 1, 0))
         # Trained files table
         self.c.execute(CREATE_TRAINED_TABLE)
+        # Header table
+        self.c.execute(CREATE_HEADER_TABLE)
+        self.c.executemany(
+            INSERT_HEADER, [(header,) for header in cfg.Config.headers.keys()]
+        )
+        # Header frequency table
+        self.c.execute(CREATE_HEADER_FREQUENCY_TABLE)
+        header_cnt = len(cfg.Config.headers)
+        for header, label in itertools.product(range(header_cnt), range(lbl_cnt)):
+            self.c.execute(INSERT_HEADER_FREQUENCY, (header + 1, label + 1, 0))
 
     def get_labels(self):
         return self.c.execute(SELECT_LABELS).fetchall()
@@ -166,6 +201,17 @@ class WordBag:
     def label_frequency(self, label_dict):
         """Give the result of reading a labeled JSON file"""
         label_id = dict(self.c.execute(SELECT_LABELS).fetchall())
+        header_id = dict(self.c.execute(SELECT_HEADERS).fetchall())
+        if tm.HEADER in label_dict:
+            headers_map = {}
+            for column, header_dict in label_dict[tm.HEADER].items():
+                try:
+                    headers_map[column] = header_id[header_dict['tags'][0]]
+                except (IndexError, KeyError):
+                    pass
+        else:
+            headers_map = None
+
         filename, _ = os.path.splitext(label_dict[tm.FILE])
 
         # Attempt to insert filename to record that the file has be trained
@@ -175,6 +221,7 @@ class WordBag:
             # Word bag already trained with this file
             return
 
+        header_count_dict = collections.defaultdict(int)
         count_dict = collections.defaultdict(int)
         bigram_dict = collections.defaultdict(int)
         for row, column_dict in label_dict[tm.CONTENT].items():
@@ -186,6 +233,11 @@ class WordBag:
                         str_tag = word['tags'][0]
                         int_tag = label_id[str_tag]
                         count_dict[(clean_word, int_tag)] += 1
+
+                        # Add to header frequency table
+                        if headers_map:
+                            header_int = headers_map[column]
+                            header_count_dict[(header_int, int_tag)] += 1
 
                         # Add to bigram table
                         if prev_word_int_tag is not None:
@@ -216,6 +268,16 @@ class WordBag:
                 }
             )
 
+        # Update the header counts
+        for (header_int, int_tag), count in header_count_dict.items():
+            self.c.execute(
+                UPDATE_HEADER_FREQUENCY, {
+                    'header': header_int,
+                    'label': int_tag,
+                    'count': count
+                }
+            )
+
         self.conn.commit()
 
     def clean_digits(self, string):
@@ -224,10 +286,6 @@ class WordBag:
 
     def raw_label_probabilities(self, word):
         results = self.c.execute(GET_PROBABILITIES, {'word': word}).fetchall()
-        return results
-
-    def raw_bigram_probabilities(self):
-        results = self.c.execute(GET_BIGRAM_PROBABILITIES).fetchall()
         return results
 
     def bigram_prob_first_cond_second(self):
