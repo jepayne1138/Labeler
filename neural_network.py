@@ -3,8 +3,8 @@ import math
 import numpy as np
 
 IN_SIZE = 150
-OUT_SIZE = 35
-SAMPLES = 1000
+OUT_SIZE = 3
+SAMPLES = 10000
 SEED = 0
 
 np.random.seed(SEED)
@@ -18,13 +18,17 @@ def main():
         col = np.random.randint(OUT_SIZE)
         row[col] += 1
 
-    network = create_netword(in_train, out_train, nb_epoch=5, validation_split=0.1)
+    network = create_network(
+        in_train, out_train,
+        epoch=1000, momentum=0.9,
+        validation_split=0.1
+    )
 
 
-def create_netword(in_train, out_train, **kwargs):
+def create_network(in_train, out_train, **kwargs):
     model = create_model(len(in_train[0]), len(out_train[0]), **kwargs)
     # Train the model
-    model.fit(in_train, out_train, **kwargs)
+    train_model(model, in_train, out_train, **kwargs)
 
 
 def create_model(
@@ -52,6 +56,16 @@ def create_model(
 
     model.compile(loss=loss, optimizer=sgd, metrics=['accuracy'])
     return model
+
+
+def train_model(
+        model, in_train, out_train,
+        batch_size=32, epoch=10, verbose=1, validation_split=0.0, **extra):
+    model.fit(
+        in_train, out_train,
+        batch_size=batch_size, nb_epoch=epoch, verbose=verbose,
+        validation_split=validation_split
+    )
 
 
 def save_model(model, filename, **extra):
