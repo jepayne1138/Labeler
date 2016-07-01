@@ -181,7 +181,7 @@ class TableDictFactory:
         if column not in self.data[HEADER]:
             self.data[HEADER][column] = {
                 'value': '',
-                'labels': {}
+                'tags': []
             }
 
         self.data[HEADER][column]['value'] = value

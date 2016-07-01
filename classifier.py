@@ -164,13 +164,27 @@ def classify_tag_manager(tag_manager):
             continue
         # Otherwise cell is a tm.TagCell instance
         classify_cell(cell, label_count, bag=bag)
-    # header_map = {res['id'] - 1: res['name'] for res in bag.get_headers()}
+    header_map = {res['id'] - 1: res['name'] for res in bag.get_headers()}
     header_arrays, header_columns = header_prob_array(label_count, bag=bag)
     best_header_indicies = best_header(header_arrays, bag=bag)
-    # final_headers = [header_map[head_idx] for head_idx in best_header_indicies]
+    final_headers = [header_map[head_idx] for head_idx in best_header_indicies]
     # with open('header_array.npy', 'wb') as array_dump:
     #     np.save(array_dump, header_arrays)
     # print(final_headers)
+
+    if tag_manager.headers is None:
+        tag_manager.headers = {}
+
+    header_count = collections.defaultdict(int)
+    for column, header in enumerate(final_headers):
+        header_count[header] += 1
+        if column in tag_manager.headers:
+            tag_manager.headers[column]['tags'] = [header]
+        else:
+            tag_manager.headers[column] = {
+                'tags': [header],
+                'value': '{}{}'.format(header, header_count[header])
+            }
 
     return best_header_indicies
 
@@ -501,6 +515,8 @@ def test2():
     FILE_PATH = 'labeled_files/e34563c.json'
     tag_manager = tm.TagManager.from_json(FILE_PATH)
     classify_tag_manager(tag_manager)
+    with open('labeled_files/e34563c_headers.json', 'w') as save_file:
+        tag_manager.write_json(save_file)
 
 
 def test3():
@@ -521,4 +537,4 @@ def test3():
 
 
 if __name__ == '__main__':
-    test3()
+    test2()
