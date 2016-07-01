@@ -82,6 +82,7 @@ class TableDictFactory:
                     table_factory.add_header(
                         int(column),
                         head_dict['value'],
+                        head_dict['tags'],
                     )
                 except KeyError:
                     pass
@@ -169,8 +170,10 @@ class TableDictFactory:
             for word in json_list
         ]
 
-    def add_header(self, column, value):
+    def add_header(self, column, value, tags=None):
         # Check that a value is not empty
+        if tags is None:
+            tags = []
         if value == '':
             return
 
@@ -181,7 +184,7 @@ class TableDictFactory:
         if column not in self.data[HEADER]:
             self.data[HEADER][column] = {
                 'value': '',
-                'tags': []
+                'tags': tags
             }
 
         self.data[HEADER][column]['value'] = value
@@ -613,6 +616,20 @@ class TagManager:
             return a
         except KeyError:
             return None
+
+    def update_header_tag(self, column, header_tag, value=''):
+        # Make sure headers exist
+        if self.headers is None:
+            self.header = {}
+
+        # Update the header
+        if column in self.headers:
+            self.headers[column]['tags'] = [header_tag]
+        else:
+            self.headers[column] = {
+                'tags': [header_tag],
+                'value': value
+            }
 
     def headers(self):
         """Creates a list over all headers"""

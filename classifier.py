@@ -16,6 +16,8 @@ class NetworkInput:
     # TODO:  Separate this into a separate modules?
 
     LENGTH_CLASSES = 10
+    LABEL_MAP = {lbl: i for i, lbl in enumerate(cfg.Config.labels.keys())}
+    HEADER_MAP = {hdr: i for i, hdr in enumerate(cfg.Config.headers.keys())}
 
     @classmethod
     def vector_length(cls):
@@ -28,46 +30,62 @@ class NetworkInput:
         return length
 
     @classmethod
+    def cell_edge(cls, length):
+        return type('CellEdge', (), {'tag_probabilities': np.zeros((length,))})
+
+    @classmethod
+    def create_word_list(cls, tag_cell):
+        return list(
+            itertools.chain(
+                [cls.cell_edge(len(cfg.Config.labels),), ''],  # Left cell edge
+                tag_cell.split,
+                ['', cls.cell_edge(len(cfg.Config.labels),)]  # Right cell edge
+            )
+        )
+
+    @classmethod
     def inputs_from_tag_cell(cls, tag_cell, header):
         """Returns a list of NetworkInput instances for the tag_cell"""
-        word_list = tag_cell.split
-        # Add cell beginning and ending information
-        word_list.insert(0, '')
-        word_list.insert(0, np.zeros((len(cfg.Config.labels),)))
-        word_list.append('')
-        word_list.append(np.zeros((len(cfg.Config.labels),)))
+        word_list = cls.create_word_list(tag_cell)
 
         # Iterate the word list in groups of 5 (left, punc, word, punc, right)
         # TODO:  I'm tired... better way of doing this (I'm sure there is)
         network_inputs = []
         for l_word, l_punc, word, r_punc, r_word in [word_list[i:i + 5] for i in range(0, len(word_list) - 4, 2)]:
-            try:
-                l_probs = l_word.tag_probabilities
-            except AttributeError:
-                l_probs = l_word
-            try:
-                r_probs = r_word.tag_probabilities
-            except AttributeError:
-                r_probs = r_word
-
             net_input = cls(
-                word, l_probs, r_probs, l_punc, r_punc, header
+                word, l_word, r_word, l_punc, r_punc, header
             )
             network_inputs.append(net_input.vectorize())
         return network_inputs
 
+    @classmethod
+    def training_from_tag_cell(cls, tag_cell):
+        word_list = cls.create_word_list(tag_cell)
+        header = tag_cell.parent.headers[tag_cell.column]['tags'][0]
+        header_int = cls.HEADER_MAP[header]
+
+        network_inputs = []
+        for l_word, l_punc, word, r_punc, r_word in [word_list[i:i + 5] for i in range(0, len(word_list) - 4, 2)]:
+            net_input = cls(
+                word, l_word, r_word, l_punc, r_punc, header_int
+            )
+            network_inputs.append(net_input.training_vector())
+        return network_inputs
+
     def __init__(
-            self, tag_word, left_word_probs, right_word_probs,
+            self, tag_word, left_word, right_word,
             left_punc, right_punc, header, label=None):
         """Represent the input to the neural network
+
+        # TODO:  SERIOUSLY FIX THIS CRAP
 
         Args:
           header (int): Index of the desired header (zero-indexed)
         """
         # Use tag_probabilities on the tag word objects
         self.tag_word = tag_word
-        self.left_word_probs = left_word_probs
-        self.right_word_probs = right_word_probs
+        self.left_word = left_word
+        self.right_word = right_word
         self.left_punc = left_punc
         self.right_punc = right_punc
         self.header = header
@@ -75,17 +93,12 @@ class NetworkInput:
         self.label = label  # If not None, we are training
 
         # print('\nInitializing NetworkInput:')
-        # print('         tag_word : {}'.format(repr(self.tag_word)))
-        # print('  left_word_probs : {}'.format(self.left_word_probs))
-        # print(' right_word_probs : {}'.format(self.right_word_probs))
-        # print('        left_punc : "{}"'.format(self.left_punc))
-        # print('       right_punc : "{}"'.format(self.right_punc))
-        # print('           header : {}'.format(self.header))
-
-        self.left_punc_list = self.encode_punc(self.left_punc)
-        self.right_punc_list = self.encode_punc(self.right_punc)
-        self.header_list = self.encode_header(self.header)
-        self.length_list = self.encode_length(str(self.tag_word))
+        # print('   tag_word : {}'.format(repr(self.tag_word)))
+        # print('  left_word : {}'.format(self.left_word))
+        # print(' right_word : {}'.format(self.right_word))
+        # print('  left_punc : "{}"'.format(self.left_punc))
+        # print(' right_punc : "{}"'.format(self.right_punc))
+        # print('     header : {}'.format(self.header))
 
         # Other inputs:
         #  Contains numerals?
@@ -94,12 +107,25 @@ class NetworkInput:
         return np.fromiter(
             itertools.chain(
                 self.tag_word.tag_probabilities,
-                self.left_word_probs,
-                self.right_word_probs,
-                self.header_list,
-                self.left_punc_list,
-                self.right_punc_list,
-                self.length_list
+                self.left_word.tag_probabilities,
+                self.right_word.tag_probabilities,
+                self.encode_header(self.header),
+                self.encode_punc(self.left_punc),
+                self.encode_punc(self.right_punc),
+                self.encode_length(str(self.tag_word))
+            ), np.float64
+        )
+
+    def training_vector(self):
+        return np.fromiter(
+            itertools.chain(
+                self.encode_label(self.tag_word),
+                self.encode_label(self.left_word),
+                self.encode_label(self.right_word),
+                self.encode_header(self.header),
+                self.encode_punc(self.left_punc),
+                self.encode_punc(self.right_punc),
+                self.encode_length(str(self.tag_word))
             ), np.float64
         )
 
@@ -130,31 +156,44 @@ class NetworkInput:
             length_list[(self.LENGTH_CLASSES - 1)] += 1
         return length_list
 
-    def encode_label(self, label):
-        """Get a list that represents the given label (for training)"""
+    def encode_label(self, tag_word):
+        """Get a list that represents the given tag_word (for training)
+
+        label_map has each label as keys and their index as values
+        """
         label_list = [0] * len(cfg.Config.labels)
-        label_list[label] += 1
+        if hasattr(tag_word, 'tags'):
+            try:
+                label_str = next(iter(sorted(self.tag_word.tags)))
+            except StopIteration:
+                raise ValueError('No tag for {}'.format(repr(tag_word)))
+            label_list[self.__class__.LABEL_MAP[label_str]] += 1
+            return label_list
         return label_list
 
 
-def classify_file(label_dict):
-    # Get classification starting percentages from word bag
-    classify_dict = {}
-    bag = wb.WordBag()
-    for row, column_dict in label_dict[tm.CONTENT].items():
-        classify_dict[row] = {}
-        for column, word_list in column_dict.items():
-            classify_dict[row][column] = []
-            for word in word_list:
-                try:
-                    clean_word = bag.clean_digits(word['word'])
-                    word['probabilities'] = bag.label_probabilities(clean_word)
-                except (TypeError, IndexError):
-                    continue
-                classify_dict.append(word)
+def create_training_sets(tag_manager):
+    # Get actual classification from word bag for best accuracy
+    classify_tag_manager
+
+# def classify_file(label_dict):
+#     # Get classification starting percentages from word bag
+#     classify_dict = {}
+#     bag = wb.WordBag()
+#     for row, column_dict in label_dict[tm.CONTENT].items():
+#         classify_dict[row] = {}
+#         for column, word_list in column_dict.items():
+#             classify_dict[row][column] = []
+#             for word in word_list:
+#                 try:
+#                     clean_word = bag.clean_digits(word['word'])
+#                     word['probabilities'] = bag.label_probabilities(clean_word)
+#                 except (TypeError, IndexError):
+#                     continue
+#                 classify_dict.append(word)
 
 
-def classify_tag_manager(tag_manager):
+def classify_tag_manager(tag_manager, classify_headers=False):
     bag = wb.WordBag()
 
     label_count = collections.defaultdict(int)  # key = (column, label)
@@ -164,29 +203,35 @@ def classify_tag_manager(tag_manager):
             continue
         # Otherwise cell is a tm.TagCell instance
         classify_cell(cell, label_count, bag=bag)
+
+    header_indicies = best_headers_indices(label_count, bag)
+    if classify_headers:
+        header_tags = headers_from_indicies(header_indicies, bag)
+        header_tag_count = collections.defaultdict(int)
+        for column, header_tag in enumerate(header_tags):
+            header_tag_count[header_tag] += 1
+            tag_manager.update_header_tag(
+                column, header_tag,
+                value='{}{}'.format(header_tag, header_tag_count[header_tag])
+            )
+
+    # Keep this for now for one of our test cases
+    return header_indicies
+
+
+def best_headers_indices(label_count, bag=None):
+    """label_count format = {(column, label): count}"""
+    if bag is None:
+        bag = wb.WordBag()
+    header_arrays, _ = header_prob_array(label_count, bag=bag)
+    return best_header(header_arrays, bag=bag)
+
+
+def headers_from_indicies(header_indicies_list, bag=None):
+    if bag is None:
+        bag = wb.WordBag()
     header_map = {res['id'] - 1: res['name'] for res in bag.get_headers()}
-    header_arrays, header_columns = header_prob_array(label_count, bag=bag)
-    best_header_indicies = best_header(header_arrays, bag=bag)
-    final_headers = [header_map[head_idx] for head_idx in best_header_indicies]
-    # with open('header_array.npy', 'wb') as array_dump:
-    #     np.save(array_dump, header_arrays)
-    # print(final_headers)
-
-    if tag_manager.headers is None:
-        tag_manager.headers = {}
-
-    header_count = collections.defaultdict(int)
-    for column, header in enumerate(final_headers):
-        header_count[header] += 1
-        if column in tag_manager.headers:
-            tag_manager.headers[column]['tags'] = [header]
-        else:
-            tag_manager.headers[column] = {
-                'tags': [header],
-                'value': '{}{}'.format(header, header_count[header])
-            }
-
-    return best_header_indicies
+    return [header_map[head_idx] for head_idx in header_indicies_list]
 
 
 def classify_cell(tag_cell, label_count, bag=None):
@@ -514,13 +559,14 @@ def test1():
 def test2():
     FILE_PATH = 'labeled_files/e34563c.json'
     tag_manager = tm.TagManager.from_json(FILE_PATH)
-    classify_tag_manager(tag_manager)
+    classify_tag_manager(tag_manager, classify_headers=True)
     with open('labeled_files/e34563c_headers.json', 'w') as save_file:
         tag_manager.write_json(save_file)
 
 
 def test3():
     FILE_PATH = 'labeled_files/e34563c.json'
+    FILE_PATH = 'labeled_files/labeled/e34256a.json'
     tag_manager = tm.TagManager.from_json(FILE_PATH)
     header_indicies = classify_tag_manager(tag_manager)
 
@@ -531,10 +577,28 @@ def test3():
         # Otherwise cell is a tm.TagCell instance
         header_int = header_indicies[cell.column]
         cell_inputs = NetworkInput.inputs_from_tag_cell(cell, header_int)
+        training = NetworkInput.training_from_tag_cell(cell)
 
-        print(cell_inputs)
+        print('cell_inputs:\n{}'.format(cell_inputs))
+        print('\ntraining:\n{}'.format(training))
         return  # Only do one for now
 
 
+def test4():
+    FILE_PATH = 'labeled_files/labeled/e34256a.json'
+    tag_manager = tm.TagManager.from_json(FILE_PATH)
+
+    for index in tag_manager.index_iterator():
+        cell = tag_manager.get(*index)
+        if cell is None:
+            continue
+        # Otherwise cell is a tm.TagCell instance
+        training = NetworkInput.training_from_tag_cell(cell)
+
+        print(str(cell))
+        print(training)
+        return
+
+
 if __name__ == '__main__':
-    test2()
+    test3()
