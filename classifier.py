@@ -5,7 +5,7 @@ import scipy.spatial as spspatial
 import labeler.models.tag_manager as tm
 import labeler.models.word_bag as wb
 import labeler.models.config as cfg
-
+import neural_network as nn
 
 cfg.Config.initialize_config()
 
@@ -17,6 +17,7 @@ class NetworkInput:
 
     LENGTH_CLASSES = 10
     LABEL_MAP = {lbl: i for i, lbl in enumerate(cfg.Config.labels.keys())}
+    LABEL_IDX_MAP = {i: lbl for i, lbl in enumerate(cfg.Config.labels.keys())}
     HEADER_MAP = {hdr: i for i, hdr in enumerate(cfg.Config.headers.keys())}
 
     @classmethod
@@ -35,13 +36,23 @@ class NetworkInput:
 
     @classmethod
     def create_word_list(cls, tag_cell):
-        return list(
+        word_list = list(
             itertools.chain(
-                [cls.cell_edge(len(cfg.Config.labels),), ''],  # Left cell edge
+                [cls.cell_edge(len(cfg.Config.labels),)],  # Left cell edge
                 tag_cell.split,
-                ['', cls.cell_edge(len(cfg.Config.labels),)]  # Right cell edge
+                [cls.cell_edge(len(cfg.Config.labels),)]  # Right cell edge
             )
         )
+
+        # Make sure there is a separator string between all other word objects
+        first =0
+        second = 1
+        while second < len(word_list):
+            if not isinstance(word_list[first], str) and not isinstance(word_list[second], str):
+                word_list.insert(second, '')
+            first += 1
+            second += 1
+        return word_list
 
     @classmethod
     def inputs_from_tag_cell(cls, tag_cell, header):
@@ -65,12 +76,15 @@ class NetworkInput:
         header_int = cls.HEADER_MAP[header]
 
         network_inputs = []
+        network_outputs = []
         for l_word, l_punc, word, r_punc, r_word in [word_list[i:i + 5] for i in range(0, len(word_list) - 4, 2)]:
             net_input = cls(
                 word, l_word, r_word, l_punc, r_punc, header_int
             )
-            network_inputs.append(net_input.training_vector())
-        return network_inputs
+            inputs, outputs = net_input.training_vector()
+            network_inputs.append(inputs)
+            network_outputs.append(outputs)
+        return (network_inputs, network_outputs)
 
     def __init__(
             self, tag_word, left_word, right_word,
@@ -117,16 +131,22 @@ class NetworkInput:
         )
 
     def training_vector(self):
-        return np.fromiter(
-            itertools.chain(
-                self.encode_label(self.tag_word),
-                self.encode_label(self.left_word),
-                self.encode_label(self.right_word),
-                self.encode_header(self.header),
-                self.encode_punc(self.left_punc),
-                self.encode_punc(self.right_punc),
-                self.encode_length(str(self.tag_word))
-            ), np.float64
+        return (
+            np.fromiter(
+                itertools.chain(
+                    self.tag_word.tag_probabilities,
+                    self.left_word.tag_probabilities,
+                    self.right_word.tag_probabilities,
+                    # self.encode_label(self.tag_word),
+                    # self.encode_label(self.left_word),
+                    # self.encode_label(self.right_word),
+                    self.encode_header(self.header),
+                    self.encode_punc(self.left_punc),
+                    self.encode_punc(self.right_punc),
+                    self.encode_length(str(self.tag_word))
+                ), np.float64
+            ),
+            self.encode_label(self.tag_word)
         )
 
     def encode_punc(self, string):
@@ -161,36 +181,41 @@ class NetworkInput:
 
         label_map has each label as keys and their index as values
         """
-        label_list = [0] * len(cfg.Config.labels)
+        label_array = np.zeros((len(cfg.Config.labels),))
         if hasattr(tag_word, 'tags'):
             try:
                 label_str = next(iter(sorted(self.tag_word.tags)))
             except StopIteration:
                 raise ValueError('No tag for {}'.format(repr(tag_word)))
-            label_list[self.__class__.LABEL_MAP[label_str]] += 1
-            return label_list
-        return label_list
+            label_array[self.__class__.LABEL_MAP[label_str]] += 1
+            return label_array
+        return label_array
 
 
-def create_training_sets(tag_manager):
-    # Get actual classification from word bag for best accuracy
-    classify_tag_manager
+def full_classify_tag_manager(tag_manager):
+    model = nn.load_model(nn.NETWORK_NAME)
+    classify_tag_manager(tag_manager, classify_headers=True)
+    for index in tag_manager.index_iterator():
+        cell = tag_manager.get(*index)
+        if cell is None:
+            continue
+        full_classify(cell, model)
 
-# def classify_file(label_dict):
-#     # Get classification starting percentages from word bag
-#     classify_dict = {}
-#     bag = wb.WordBag()
-#     for row, column_dict in label_dict[tm.CONTENT].items():
-#         classify_dict[row] = {}
-#         for column, word_list in column_dict.items():
-#             classify_dict[row][column] = []
-#             for word in word_list:
-#                 try:
-#                     clean_word = bag.clean_digits(word['word'])
-#                     word['probabilities'] = bag.label_probabilities(clean_word)
-#                 except (TypeError, IndexError):
-#                     continue
-#                 classify_dict.append(word)
+
+def full_classify(tag_cell, model):
+    """Fully classifies through the neural network"""
+    header = tag_cell.parent.headers[tag_cell.column]['tags'][0]
+    header_int = NetworkInput.HEADER_MAP[header]
+
+    input_vectors = NetworkInput.inputs_from_tag_cell(tag_cell, header_int)
+    if not input_vectors:
+        return
+
+    input_array = np.vstack(input_vectors)
+    prediction = model.predict(input_array)
+
+    for index, tag_id in enumerate(prediction.argmax(axis=1)):
+        tag_cell.add_tag(index, NetworkInput.LABEL_IDX_MAP[tag_id])
 
 
 def classify_tag_manager(tag_manager, classify_headers=False):
@@ -559,8 +584,8 @@ def test1():
 def test2():
     FILE_PATH = 'labeled_files/e34563c.json'
     tag_manager = tm.TagManager.from_json(FILE_PATH)
-    classify_tag_manager(tag_manager, classify_headers=True)
-    with open('labeled_files/e34563c_headers.json', 'w') as save_file:
+    full_classify_tag_manager(tag_manager)
+    with open('labeled_files/e34563c_classified.json', 'w') as save_file:
         tag_manager.write_json(save_file)
 
 
@@ -579,6 +604,7 @@ def test3():
         cell_inputs = NetworkInput.inputs_from_tag_cell(cell, header_int)
         training = NetworkInput.training_from_tag_cell(cell)
 
+        print(str(cell))
         print('cell_inputs:\n{}'.format(cell_inputs))
         print('\ntraining:\n{}'.format(training))
         return  # Only do one for now
@@ -587,18 +613,39 @@ def test3():
 def test4():
     FILE_PATH = 'labeled_files/labeled/e34256a.json'
     tag_manager = tm.TagManager.from_json(FILE_PATH)
+    header_indicies = classify_tag_manager(tag_manager)
 
+    # training_list = []
+    training_input_list = []
+    training_output_list = []
     for index in tag_manager.index_iterator():
         cell = tag_manager.get(*index)
         if cell is None:
             continue
-        # Otherwise cell is a tm.TagCell instance
-        training = NetworkInput.training_from_tag_cell(cell)
 
+        # TESTING
         print(str(cell))
-        print(training)
+        full_classify(cell)
         return
 
 
+        # Otherwise cell is a tm.TagCell instance
+        training_input, training_output = NetworkInput.training_from_tag_cell(cell)
+        training_input_list.append(training_input)
+        training_output_list.append(training_output)
+        # training_list.append(
+        #     NetworkInput.training_from_tag_cell(cell)
+        # )
+
+    in_train = np.vstack(tuple(itertools.chain(*training_input_list)))
+    out_train = np.vstack(tuple(itertools.chain(*training_output_list)))
+    print(in_train.shape)
+    print(out_train.shape)
+    with open('training_input.npy', 'wb') as train_input:
+        np.save(train_input, in_train)
+    with open('training_output.npy', 'wb') as train_output:
+        np.save(train_output, out_train)
+
+
 if __name__ == '__main__':
-    test3()
+    test2()
