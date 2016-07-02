@@ -107,6 +107,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.model.index(self.cur_word.row, self.cur_word.column)
             )
 
+    def up_cell(self):
+        print('Not implemented yet:  Go up cells')
+
+    def down_cell(self):
+        print('Not implemented yet:  Go down cells')
+
     def highlight_current(self):
         self.model.setData(
             self.model.index(self.cur_word.row, self.cur_word.column),
@@ -309,6 +315,12 @@ def _get_next_word(parent, obj, event):
 def _get_prev_word(parent, obj, event):
     parent.parent().get_prev()
 
+def _go_up_cell(parent, obj, event):
+    parent.parent().up_cell()
+
+def _go_down_cell(parent, obj, event):
+    parent.parent().down_cell()
+
 
 def _get_next_label(parent, obj, event):
     main_window = parent.parent()
@@ -339,6 +351,7 @@ class TabelKeyFilter(QObject):
         Qt.Key_Up: _get_prev_label,
         Qt.Key_Space: _apply_tag,
     }
+    nav.update({Qt.Key_Up: _go_up_cell, Qt.Key_Down: _go_down_cell})
 
     def eventFilter(self, obj, event):
         if (event.type() == QEvent.KeyPress and
