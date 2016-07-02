@@ -9,7 +9,7 @@ def exec_app(args):
 
     filename, _ = QFileDialog.getOpenFileName(
         caption='Open File',
-        filter='JSON Files/ XML Files / Excel Files (*.json; *.xml; *.xlsx; *.xls);;All Files (*)'
+        filter='JSON Files/ XML Files / Excel Files (*.json *.xml *.xlsx *.xls)'
 
     )
 
