@@ -8,8 +8,8 @@ from PySide.QtGui import *
 
 from .compiled.mainwindow_ui import Ui_MainWindow
 from .label_selection_dock import LabelSelectionDock
-from labeler.models.table_main_model import TableMainModel
-from labeler.models.tag_manager import TagManager
+from labeler.modules.table_main_model import TableMainModel
+from labeler.modules.tag_manager import TagManager
 
 
 # For test purposes only

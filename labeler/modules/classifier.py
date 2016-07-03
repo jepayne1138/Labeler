@@ -2,10 +2,10 @@ import collections
 import itertools
 import numpy as np
 import scipy.spatial as spspatial
-import labeler.models.tag_manager as tm
-import labeler.models.word_bag as wb
-import labeler.models.config as cfg
-import labeler.models.neural_network as nn
+import labeler.modules.tag_manager as tm
+import labeler.modules.word_bag as wb
+import labeler.modules.config as cfg
+import labeler.modules.neural_network as nn
 
 cfg.Config.initialize_config()
 

@@ -6,8 +6,8 @@ import sqlite3
 import re
 import collections
 import itertools
-import labeler.models.tag_manager as tm
-import labeler.models.config as cfg
+import labeler.modules.tag_manager as tm
+import labeler.modules.config as cfg
 
 DB_PATH = 'labeler/data/word_bag.db'
 

@@ -2,8 +2,8 @@ from PySide.QtCore import *
 from PySide.QtGui import *
 
 from .compiled.label_selection_dock_ui import Ui_DockWidget
-from labeler.models.list_labels_model import ListLabelsModel
-from labeler.models.config import Config, TextColorMap
+from labeler.modules.list_labels_model import ListLabelsModel
+from labeler.modules.config import Config, TextColorMap
 
 
 class LabelSelectionDock(QDockWidget, Ui_DockWidget):

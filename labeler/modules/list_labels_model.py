@@ -1,7 +1,7 @@
 from PySide.QtCore import *
 from PySide.QtGui import *
 
-from labeler.models.config import Config, TextColorMap
+from labeler.modules.config import Config, TextColorMap
 
 from .base_model import QListModel
 

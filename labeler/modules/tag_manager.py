@@ -14,7 +14,7 @@ import json
 import xlrd
 import math
 import collections
-from labeler.models.config import Config, TextColorMap
+from labeler.modules.config import Config, TextColorMap
 
 
 XLSX_ENCODING = "cp1252"
