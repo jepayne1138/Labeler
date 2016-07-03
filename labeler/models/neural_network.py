@@ -8,15 +8,17 @@ OUT_SIZE = 3
 SAMPLES = 10000
 SEED = 0
 
-NETWORK_NAME = 'trained_network'
+NETWORK_NAME = 'labeler/data/trained_network'
+TRAIN_INPUT_PATH = 'labeler/data/training_input.npy'
+TRAIN_OUTPUT_PATH = 'labeler/data/training_output.npy'
 
 np.random.seed(SEED)
 
 
 def main():
-    with open('training_input.npy', 'rb') as train_input:
+    with open(TRAIN_INPUT_PATH, 'rb') as train_input:
         in_train = np.load(train_input)
-    with open('training_output.npy', 'rb') as train_output:
+    with open(TRAIN_OUTPUT_PATH, 'rb') as train_output:
         out_train = np.load(train_output)
 
     network_arguments = {

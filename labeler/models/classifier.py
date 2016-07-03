@@ -5,7 +5,7 @@ import scipy.spatial as spspatial
 import labeler.models.tag_manager as tm
 import labeler.models.word_bag as wb
 import labeler.models.config as cfg
-import neural_network as nn
+import labeler.models.neural_network as nn
 
 cfg.Config.initialize_config()
 
