@@ -7,7 +7,7 @@ I needed some way of tagging words in an Excel spreadsheet of addresses so that 
 -Install Pyside and xlrd with requirements.txt file
 
 ###Screenshot
-![Screenshot](/screenshot.jpg?raw=true "Screenshot")
+![Screenshot](/docs/img/screenshot.jpg?raw=true "Screenshot")
 
 
 **More details on the way...**
