@@ -12,7 +12,6 @@ venv*/
 *.npy
 *.h5
 __pycache__/
-test*.py
 labeled_files/
 
 # Blacklist
