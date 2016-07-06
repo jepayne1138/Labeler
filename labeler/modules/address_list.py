@@ -21,6 +21,8 @@ Dict Format -> {
     FILE: str
 }
 """
+import collections
+import math
 import os
 import re
 import json
@@ -46,12 +48,55 @@ def base_name(path):
     return os.path.splitext(os.path.basename(path))[0]
 
 
+def normalize(input_var):
+    """Normalizes a variable as string, cleans and converts float to int"""
+    var = input_var
+    try:
+        var = var.encode(XLSX_ENCODING).decode(ENCODING, 'ignore')
+    except AttributeError:
+        try:
+            var = float(var)
+            if math.isnan(var):
+                return str(input_var)
+            if math.isinf(var):
+                return str(input_var)
+            if int(var) == var:
+                var = str(int(var))
+            else:
+                var = str(var)
+        except ValueError:
+            pass
+    return var
+
+
 class AddressList:
 
     @classmethod
-    def from_excel(cls, file_obj):
+    def from_excel(cls, file_obj, sheet=0, headers=True):
+        import xlrd  # Only need to import this module if parsing from Excel
+        # Open the Excel workbook
+        xl_book = xlrd.open_workbook(
+            file_contents=file_obj,
+            encoding_override=XLSX_ENCODING
+        )
+        xl_sheet = xl_book.sheet_by_index(sheet)
+
+        # Read headers
         headers = {}
-        content = {}
+        if headers:
+            # TODO:  Handle blank lines at the top of the file
+            for column, header in enumerate(xl_sheet.row_values(0)):
+                headers[column] = {VALUE: header, TAG: ''}
+
+        # Read content
+        content = collections.defaultdict(dict)
+        for row, row_list in enumerate(xl_sheet.get_rows()):
+            if row == 1 and headers:
+                continue
+            for column, value in enumerate(row_list):
+                content[row][column] = normalize(value)
+
+        # Return the new AddressList instance
         return cls(base_name(file_obj.name), headers, content)
 
     @classmethod
