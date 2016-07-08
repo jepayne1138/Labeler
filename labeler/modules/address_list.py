@@ -22,7 +22,6 @@ Dict Format -> {
 }
 """
 import collections
-import math
 import os
 import re
 import json
@@ -39,7 +38,6 @@ TAG = 'tag'
 FILE = 'file'
 
 # Encoding constants
-XLSX_ENCODING = "cp1252"
 ENCODING = 'utf-8'
 
 
@@ -48,45 +46,31 @@ def base_name(path):
     return os.path.splitext(os.path.basename(path))[0]
 
 
-def normalize(input_var):
-    """Normalizes a variable as string, cleans and converts float to int"""
-    var = input_var
-    try:
-        var = var.encode(XLSX_ENCODING).decode(ENCODING, 'ignore')
-    except AttributeError:
-        try:
-            var = float(var)
-            if math.isnan(var):
-                return str(input_var)
-            if math.isinf(var):
-                return str(input_var)
-            if int(var) == var:
-                var = str(int(var))
-            else:
-                var = str(var)
-        except ValueError:
-            pass
-    return var
+class AddressListEncoder(json.JSONEncoder):
+
+    """Custom JSONEncoder that allows objects to define a to_json method"""
+
+    def default(self, obj):
+        if hasattr(obj, "to_json"):
+            return super().default(obj.to_json())
+        return super().default(obj)
 
 
 class AddressList:
 
     @classmethod
     def from_excel(cls, file_obj, sheet=0, headers=True):
-        import xlrd  # Only need to import this module if parsing from Excel
-        # Open the Excel workbook
-        xl_book = xlrd.open_workbook(
-            file_contents=file_obj,
-            encoding_override=XLSX_ENCODING
-        )
-        xl_sheet = xl_book.sheet_by_index(sheet)
-
-        # Read headers
-        headers = {}
+        import excel
+        values = excel.parse_values(file_obj, sheet=sheet)
         if headers:
-            # TODO:  Handle blank lines at the top of the file
-            for column, header in enumerate(xl_sheet.row_values(0)):
-                headers[column] = {VALUE: header, TAG: ''}
+            header_list = values.pop(0)
+        content_dict, header_dict = excel.value_dict(
+            excel.sheet(file_obj, sheet=sheet),
+            headers,
+            excel.normalize,
+            input_encoding=excel.XLSX_ENCODING,
+            output_encoding=ENCODING
+        )
 
         # Read content
         content = collections.defaultdict(dict)
@@ -94,10 +78,34 @@ class AddressList:
             if row == 1 and headers:
                 continue
             for column, value in enumerate(row_list):
-                content[row][column] = normalize(value)
+                clean_value = normalize(value)
+                if clean_value:
+                    content[row][column] = cls.split_words(clean_value)
 
         # Return the new AddressList instance
-        return cls(base_name(file_obj.name), headers, content)
+        return cls(base_name(file_obj.name), header_dict, content_dict)
+
+    @staticmethod
+    def split_words(string):
+        """Splits a string into a list of words
+
+        Each word is a dict with VALUE and TAG keys, and separating
+        characters are just stored as a string
+
+        Should just return the word in a list if already just one word
+        """
+        word_index = 0
+        split = []
+        for word in RE_WORD.split(string):
+            if word != '':
+                if RE_WORD.match(word):
+                    split.append(
+                        TagWord(self, word, self.row, self.column, word_index)
+                    )
+                    word_index += 1
+                else:
+                    split.append(word)
+        return split
 
     @classmethod
     def from_json(cls, file_obj, **kwargs):
@@ -107,16 +115,31 @@ class AddressList:
         filename = _data.get(FILE, default=base_name(file_obj.name))
         return cls(filename, headers, content)
 
+    @classmethod
+    def from_table(cls, filename, table, headers=True):
+        if headers:
+            header_dict = {k: v for k, v in enumerate(table.pop(0)) if v != ''}
+        else:
+            header_dict = {}
+
+        # Iterate over the remaining value to create the content dict
+        content_dict = collections.defaultdict(dict)
+        for row, row_list in enumerate(table):
+            for col, value in enumerate(row_list):
+                if value != '':
+                    content_dict[row][col] = cls.split_words(value)
+        return cls(filename, header_dict, content_dict)
+
+
     def __init__(self, filename, headers=None, content=None):
         # Set default values
-        headers = {} if headers is None else headers
-        content = {} if content is None else content
+        self.headers = {} if headers is None else headers
+        self.content = {} if content is None else content
+        self.filename = filename
 
-        self._data = {
-            HEADER: headers,
-            CONTENT: content,
-            FILE: filename
+    def to_json(self, **kwargs):
+        return {
+            HEADER: self.headers,
+            CONTENT: self.content,
+            FILE: self.filename
         }
-
-    def json(self, **kwargs):
-        return json.dumps(self._data, **kwargs)
